@@ -1,0 +1,320 @@
+* Language
+
+** Types
+
+   path
+   number
+   set
+   string
+   list
+   lambda
+   null
+
+   [derivation]   <-- sometimes recognized, not for isType though
+
+** Expressions
+
+  | expression                | description                                                                   |
+  |---------------------------+-------------------------------------------------------------------------------|
+  | rec { a = b; b = a; }     | recursive attribute set                                                       |
+  | let name = e1; ... in e2; | let binding of one or more variables                                          |
+  | inherit name;             | equivalent to { name = name; } to import a variable into an attr set          |
+  | args: body                | function definition, args is an identifier or a set (with optional @ for set) |
+  | if e1 then e2 else e3     | conditional                                                                   |
+  | assert e1; e2             | e2 if e1 is true, else abort and output backtrace                             |
+  | with e1; e2               | introduces attr set e1 into e2 as variable bindings                           |
+  | # comment to eol          | comment                                                                       |
+  | /* comment */             | comment                                                                       |
+
+** Operators
+
+  | operator                             | associativity | description                                                    |
+  |--------------------------------------+---------------+----------------------------------------------------------------|
+  | e . attrpath [or def]                | -             | get attr 'attrpath' from set e, def if attr doesn't exist      |
+  | e1 e2                                | left          | call function e1 with arg e2                                   |
+  | - e                                  | -             | arithmetic negation                                            |
+  | e ? attrpath                         | -             | true if e contains attrpath                                    |
+  | e1 ++ e2                             | right         | list concatenation                                             |
+  | e1 * e2, e1 / e2                     | left          | arithmetic multiplication and division                         |
+  | e1 + e2, e1 - e2                     | left          | arithmetic addition and subtraction, concat string or path (+) |
+  | ! e                                  | none          | boolean negation                                               |
+  | e1 // e2                             | right         | set of attrs in e1 and e2, latter takes precedence             |
+  | e1 < e2, e1 > e2, e1 <= e2, e1 >= e2 | -             | arithmetic comparison                                          |
+  | e1 == e2, e1 != e2                   | -             | equality                                                       |
+  | e1 && e2                             | left          | logical AND                                                    |
+  | e1 pipe pipe e2                      | left          | logical OR                                                     |
+  | e1 -> e2                             | none          | logical implication (! e1 pipe pipe e2)                        |
+   
+* Primitives
+
+  | function         | description                                                                        |
+  |------------------+------------------------------------------------------------------------------------|
+  | abort s          | abort eval, print error message s                                                  |
+  | baseNameOf s     | everything in string s following the final '/' (or s if no slash in s)             |
+  | derivation attrs | a derivation                                                                       |
+  | dirOf s          | directory portion of a string (before final '/', or "." if no slash)               |
+  | import path      | load, parse, and return the nix expr in the file path (default.nix if a directory) |
+  | throw s          | similar to abort, but ~tryEval~: can catch these                                   |
+
+* builtins
+
+** Attribute sets
+
+  | function             | description                                                                            |
+  |----------------------+----------------------------------------------------------------------------------------|
+  | attrNames set        | names of attributes, alphabetically sorted                                             |
+  | attrValues set       | values of attributes, sorted by names                                                  |
+  | builtins             | self-referencing set                                                                   |
+  | functionArgs f       | set of the formal arguments expected by ~f~, value of each is true if it has a default |
+  | getAttr s set        | returns attribute named s from set, aborts if doesn't exist, s is an expression        |
+  | hasAttr s set        | true if set has attribute named s, s is an expression                                  |
+  | intersectAttrs e1 e2 | returns intersection of sets e1 and e2                                                 |
+  | isAttrs e            | true if e is a set                                                                     |
+  | listToAttrs e        | e is list of ~{ name = ".."; value = ..; }~ pairs, makes ~{ name1=val1; .. }~          |
+  | removeAttrs set list | remove attrs in list from set (list can be a superset of attr names)                   |
+
+** Bitwise operators
+
+  | function     | description                       |
+  |--------------+-----------------------------------|
+  | bitAnd e1 e2 | bitwise AND of integers e1 and e2 |
+  | bitOr  e1 e2 | bitwise OR of integers e1 and e2  |
+  | bitXor e1 e2 | bitwise XOR of integers e1 and e2 |
+  |              |                                   |
+   
+** Booleans
+
+  | function | description         |
+  |----------+---------------------|
+  | isBool e | true if e is a bool |
+
+** Expressions
+
+  | function                                       | description                                                 |
+  |------------------------------------------------+-------------------------------------------------------------|
+  | deepSeq e1 e2                                  | evaluate expression e1 deeply, then return e2               |
+  | isFunction e                                   | true if e is a function                                     |
+  | isNull e                                       | true if e is null (deprecated, write ~e == null~ instead)   |
+  | path { path, name, filter, recursive, sha256 } | enriches builtin path                                       |
+  | seq e1 e2                                      | evaluate e1, return e2                                      |
+  | trace e1 e2                                    | evaluate e1, print its AST on stderr, return e2             |
+  | tryEval e                                      | evaluate e and return: { success: bool, value: e or false } |
+  | typeOf e                                       | string (from Language.Types above)                          |
+   
+** Environment
+
+  | function           | description                                                                             |
+  |--------------------+-----------------------------------------------------------------------------------------|
+  | filterSource e1 e2 | Only copies elements in sourcetree ~e2~ for which ~e1~ returns true into the nix store  |
+  |                    | ~e1 = path: type: ...~, ~path~ = full file path                                         |
+  |                    | ~type~ is "regular", "directory", "symlink", "unknown"                                  |
+  |--------------------+-----------------------------------------------------------------------------------------|
+  | getEnv s           | Value of environment variable ~s~ or empty string if doesn't exist. Use with care.      |
+  | pathExists path    | true if path exists at evaluation time                                                  |
+  | readDir path       | returns contents of diretory path as an attr set, names = filenames, values = file type |
+  | readFile path      | return contents of path as a string                                                     |
+  | toFile filename s  | stores string s in nix store and returns the nix store path                             |
+  |--------------------+-----------------------------------------------------------------------------------------|
+  | derivation args    | See [[Derivations]] section below |
+   
+   Note: ~toFile~ cannot reference the result of a derivation (via
+   antiquotation); use ~writeTextFile~ from nixpkgs for that.
+
+** Lists
+
+  | function           | description                                                                  |
+  |--------------------+------------------------------------------------------------------------------|
+  | all pred list      | true if pred returns true for all elements in list                           |
+  | any pred list      | true if pred returns true for at least one element in list                   |
+  | concatLists lists  | concat a list of lists into a list                                           |
+  | elem x xs          | true if x occurs in xs                                                       |
+  | elemAt xs n        | return element n from xs                                                     |
+  | filter f xs        | only elements of xs for which f returns true                                 |
+  | foldl' op nul list | ~== op (op (op nul x0) x1) x2) ...~                                          |
+  | genList gen len    | calls gen with each of [0 .. len - 1], returns list of results               |
+  | head list          | returns first element of list, abort if empty                                |
+  | isList e           | true if e is a list                                                          |
+  | length list        | length of the list                                                           |
+  | map f list         | applies f to each element of list, returning list of results                 |
+  | sort f list        | sort ~list~ calling ~f~ with element pairs (f first second = first < second) |
+  | tail list          | list after first element removed, abort if empty or not a list               |
+   
+** Networking
+
+  None of these are available in /restricted evaluation mode/ or /pure evaluation mode/.
+
+  | function                   | description                                                                         |
+  |----------------------------+-------------------------------------------------------------------------------------|
+  | fetchurl                   | downloads URL, return path of downloaded file                                       |
+  | fetchTarball url           | downloads and unpacks tarball, removing top level path, cached (1 hr, configurable) |
+  |----------------------------+-------------------------------------------------------------------------------------|
+  | fetchGit                   | downloads git, name=baseNameOf url, rev=tip, ref=HEAD                               |
+  | { url, name?, rev?, ref? } | ref cannot be annotated tag                                                         |
+  |----------------------------+-------------------------------------------------------------------------------------|
+
+** Numbers
+
+  | function       | description             |
+  |----------------+-------------------------|
+  | add e1 e2      | sum of numbers          |
+  | div e1 e2      | quotient of numbers     |
+  | isInt e        | true if e is an integer |
+  | isFloat e      | true if e is a float    |
+  | lessThan e1 e2 | true if e1 < e2         |
+  | mul e1 e2      | e1 * e2                 |
+  | sub e1 e2      | e1 - e2                 |
+
+** Strings
+
+  | function                  | description                                                                                 |
+  |---------------------------+---------------------------------------------------------------------------------------------|
+  | compareVersions s1 s2     | compare two strings versions, -1 = s1 older than s2, 0 = same, 1 = s1 newer than s2         |
+  | splitVersion s            | split a string representing a version into its components                                   |
+  | concatStringsSep sep list | intercalation.  concatStringsSep "/" ["usr" "local" "bin"] == "usr/local/bin"               |
+  | currentSystem             | string representing the current system (e.g. "x86_64-linux")                                |
+  | fromJSON e                | converts a JSON string into a nix value                                                     |
+  | hashString type s         | returns base-16 hash of s, type is "md5", "sha1", "sha256"                                  |
+  | isString e                | true if e is a string                                                                       |
+  | match regex str           | return list of matching regex groups in str, null if no matches                             |
+  | parseDrvName s            | splits s into a package name and a version (separator is first dash followed by a digit)    |
+  | replaceStrings from to s  | replace every occurrence of strings in list ~from~ with corresponding string in ~to~ in ~s~ |
+  | split regex str           | return list of non-match interleaved with matching regex groups in str                      |
+  | stringLength str          | return length in characters, abort if str is not a string                                   |
+  | substring start len s     | returns s from position start for len characters, "" if start > s, len may be after end     |
+  | toJSON e                  | convert expression e's value to a JSON string                                               |
+  | toPath s                  | string to path; DEPRECATED, use ~/. + "/path"~ or ~./. + "/path"~ instead                   |
+  | toString e                | convert expression to a string                                                              |
+  | toXML e                   | convert expression e's value to an XML string                                               |
+
+* Derivations
+
+  Form:  ~derivation args~
+
+  Generates an output ~drv~ file when instantiated, and runs the builder when a build is done.
+
+  All args are provided as environment variables to the build (with various conversions, e.g. to nix store paths).
+
+** Required arguments
+
+   | Argument | Usage                                                         |
+   |----------+---------------------------------------------------------------|
+   | name     | name of derivation (used in nix store output path generation) |
+   | system   | the build can only be run on a system of this name            |
+   | builder  | the path to execute to perform the build                      |
+
+   ~stdenv.mkDerivation~ sets default system and uses bash for the builder
+
+** Fixed output derivation arguments (optional)
+
+   The presence of one or more of these indicates a "fixed output
+   derivation", whose output hash is known in advance.  When the build
+   finishes, the hash computed from the build is compared to these and
+   the build is failed if the hash does not match.
+
+   E.g. useable for things like ~fetchurl~ where the URL may change
+   but the downloaded object does not, so the output hash is
+   pre-determined (based on the downloaded object) and not computed
+   from the inputs.
+
+   | Argument       | Type   | Usage                         |
+   |----------------+--------+-------------------------------|
+   | outputHashMode | string | "flat" or "recursive"         |
+   | outputHashAlgo | string | "sha1", "sha256", or "sha512" |
+   | outputHash     | string | hash value                    |
+
+** Optional arguments
+
+   | Argument              | Type          | Usage                                                              |
+   |-----------------------+---------------+--------------------------------------------------------------------|
+   | args                  | list of strs  | passed to the builder as command-line arguments                    |
+   | outputs               | list of strs  | env var names containing a output nix store paths                  |
+   |-----------------------+---------------+--------------------------------------------------------------------|
+   | allowedReferences     | list of strs  | allowable runtime dependencies                                     |
+   | allowedRequisites     | list of strs  | recursive form of allowedReferences                                |
+   | disallowedReferences  | list of strs  | output explicitly cannot refer to these                            |
+   | disallowedRequisites  | list of strs  | recursive form of disallowedReferences                             |
+   |-----------------------+---------------+--------------------------------------------------------------------|
+   | exportReferencesGraph | list of pairs | [ name1 path1 name2 path2 ] writes reference graph of              |
+   |                       |               | path1 to file name1 (e.g. useable for creating ramdisks)           |
+   |-----------------------+---------------+--------------------------------------------------------------------|
+   | impureEnvVars         | list of strs  | env vars passed from env of calling user to the builder            |
+   |                       |               | only allowed in fixed output derivations (hash is known            |
+   |                       |               | in advance).  Dangerous                                            |
+   |-----------------------+---------------+--------------------------------------------------------------------|
+   | passAsFile            | list of strs  | pass these attrs as files instead of env vars (big values)         |
+   | preferLocalBuild      | boolean       | built locally instead of on a remote builder                       |
+   | allowSubstitutes      | boolean       | always build if false (do not download prebuilt binary substitute) |
+ 
+** Process
+
+   1. ~cd $(mktmpdir)~
+   2. clear ENV and set to:
+      * attributes from derivation
+      * NIX_BUILD_TOP :: temporary build directory
+      * TMPDIR, TEMPDIR, TMP, TEMP :: temporary build directory
+      * PATH :: "/path-not-set"
+      * HOME :: "/homeless-shelter"
+      * NIX_STORE :: path of top-level nix store (e.g. ~/nix/store~)
+   3. remove any existing output path and create a lock file to avoid collisions
+   4. redirect stdout and stderr to ~/nix/var/log/nix~
+   5. execute builder, with ~args~ attribute; must exit with 0 for success
+   6. remove temporary directory
+   7. Scan each output path for references to input paths and register those as runtime dependencies
+   8. Change attributes of all outputs to:
+      * last-modified timestamp = 1  (00:00:01 1/1/1970 UTC)
+      * group = default group
+      * mode = 0444 or 0555, clearing setuid and setgid
+** Overrides
+
+*** Globally
+
+     Define ~packageOverrides~ in ~/.config/nixpkgs/config.nix~:
+
+     #+BEGIN_EXAMPLE
+     {
+       packageOverrides = pkgs: rec {
+         foo = pkgs.foo.override { ... };
+       };
+     }
+     #+END_EXAMPLE
+
+*** Package Arguments: <pkg>.override
+
+     Use the override function attribute to override arguments to a package.
+
+     #+BEGIN_EXAMPLE
+     pkgs.foo.override { arg1 = val1; }
+     #+END_EXAMPLE
+
+*** Package Attributes: <pkg>.overrideAttrs
+
+    Use the override function to override the attribute set passed to
+    a ~stdenv.mkDerivation~ call, producing a new derivation based on
+    the original one.  Automatically enabled by using ~stdenv.mkDerivation~.
+
+    #+BEGIN_EXAMPLE
+    helloWithDebug = pkgs.hello.overrideAttrs (oldAttrs: rec {
+                        separateDebugInfo = true;
+                     };
+    #+END_EXAMPLE
+
+    n.b. preferred to ~overrideDerivation~
+
+*** New Derivation: <pkg>.overrideDerivation
+
+    Creates a new derivation based on and existing one by overriding
+    the original's attributes with the new ones.
+
+    #+BEGIN_EXAMPLE
+    mySed = pkgs.gnused.overrideDerivation (oldAttrs: {
+               name = "sed-4.2.2-pre";
+               src = fetchurl { url = ...; sha256 = ...; };
+               patches = [];
+            });
+    #+END_EXAMPLE
+
+    Less preferred than ~overrideAttrs~ in almost all situations
+    because this occurs *after* evaluating a packages attributes; this
+    is especially troublesome if some attributes refer to others via
+    "... ${attr}..." because the reference will be for the old
+    attribute value.
